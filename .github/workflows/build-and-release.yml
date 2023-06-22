@@ -1,0 +1,75 @@
+# This workflow tests, builds and releases the project on github and nuget.org
+
+name: build-and-release
+on: [workflow_dispatch]
+env:
+  # Specifies dotnet SDK Version
+  DOTNET_VERSION: '6.0.x'
+
+jobs:
+  ci:
+    name: build-and-release-job
+    runs-on: ubuntu-latest
+    steps:
+    # Checks out the source code at the latest commit
+    - uses: actions/checkout@v3
+
+    # Load version-name from .csproj in different enviornment variables (env.Tag_Name + env.Release_Name + env.Nuget_Version)
+    - name: Receive Version
+      run: python ".github/workflows/receive-version.py"
+    
+    # Installs the .NET SDK on the build machine
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v3
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+        
+    # Installs any NuGet packages required.
+    - name: Install dependencies
+      run: dotnet restore
+      
+    # Builds the project
+    - name: Build
+      run: dotnet build --configuration Release --no-restore
+      
+    # Runs any tests in the project
+    - name: Test
+      run: dotnet test --configuration Release --no-restore --verbosity normal
+    
+    # TODO: Create Github Tag + Release
+
+    # Create Release Log
+    # Need to fetch, otherwise doesn't know last commits
+    - name: Git Fetch
+      shell: bash
+      run: git fetch --depth=500
+
+    - name: create release-notes.md
+      run: bash ".github/workflows/create-release-notes.sh" "${{ github.repository }}" ${{ env.Tag_Name }}
+      
+    - name: show release log file
+      run: cat "${{ github.workspace }}\release-notes.md"
+      
+    - name: workspace directory
+      shell: bash
+      run: echo "${{ github.workspace }}\release-notes.md"
+
+    - name: list files
+      run: ls
+
+    # Create Release
+    - name: Release
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: "${{ env.Tag_Name }}"
+        name: "${{ env.Release_Name }}"
+        body_path: "${{ github.workspace }}\\release-notes.md"
+        token: ${{ secrets.GITHUB_TOKEN }}
+
+    # Create nuget-package
+    - name: Pack
+      run: dotnet pack --configuration Release --no-restore
+    
+    # Push nuget-package to nuget.org
+    - name: Push
+      run: dotnet nuget push Markdown2Pdf/bin/Release/Markdown2Pdf.${{ env.Nuget_Version }}.nupkg -k ${{ secrets.NUGET_API_KEY }} -s https://api.nuget.org/v3/index.json  --skip-duplicate

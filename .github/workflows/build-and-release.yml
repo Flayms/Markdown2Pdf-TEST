@@ -45,7 +45,7 @@ jobs:
       run: git fetch --depth=500
 
     - name: create release-notes.md
-      run: bash ".github/workflows/create-release-notes.sh" "${{ github.repository }}" ${{ env.Tag_Name }}
+      run: bash ".github/workflows/create-release-notes.sh" "${{ github.repository }}" ${{ env.Tag_Name }} "${{ github.workspace }}\release-notes.md"
       
     - name: show release log file
       run: cat "${{ github.workspace }}\release-notes.md"

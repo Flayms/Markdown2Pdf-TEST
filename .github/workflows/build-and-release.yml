@@ -11,7 +11,7 @@ jobs:
     name: build-and-release-job
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: write-all
     steps:
     # Checks out the source code at the latest commit
     - uses: actions/checkout@v3

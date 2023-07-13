@@ -1,3 +1,5 @@
+#!/bin/bash
+
 OWNER_AND_REPO_NAME=$1
 CURRENT_TAG=$2
 FILE_NAME=$3

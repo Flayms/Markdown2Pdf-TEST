@@ -10,8 +10,11 @@ jobs:
   ci:
     name: build-and-release-job
     runs-on: ubuntu-latest
+
+    # Need write permission for creating release-notes file
     permissions:
       contents: write
+
     steps:
     # Checks out the source code at the latest commit
     - uses: actions/checkout@v3
@@ -37,8 +40,6 @@ jobs:
     # Runs any tests in the project
     - name: Test
       run: dotnet test --configuration Release --no-restore --verbosity normal
-    
-    # TODO: Create Github Tag + Release
 
     # Create Release Log
     # Need to fetch, otherwise doesn't know last commits
@@ -46,18 +47,11 @@ jobs:
       shell: bash
       run: git fetch --depth=500
 
-    - name: create release-notes
+    - name: Create release-notes
       run: bash ".github/workflows/create-release-notes.sh" "${{ github.repository }}" ${{ env.Tag_Name }} "${{ github.workspace }}\release-notes.md"
       
-    - name: show release log file
-      run: cat "${{ github.workspace }}\release-notes.md"
-      
-    - name: workspace directory
-      shell: bash
-      run: echo "${{ github.workspace }}\release-notes.md"
-
-    - name: list files
-      run: ls
+    - name: Show release-notes
+      run: cat "${{ github.workspace }}\release-notes.md"   
 
     # Create Release
     - name: Release
@@ -74,4 +68,4 @@ jobs:
     
     # Push nuget-package to nuget.org
     - name: Push
-      run: dotnet nuget push Markdown2Pdf/bin/Release/Markdown2Pdf.${{ env.Nuget_Version }}.nupkg -k ${{ secrets.NUGET_API_KEY }} -s https://int.nugettest.org/api/v2 --skip-duplicate
+      run: dotnet nuget push Markdown2Pdf/bin/Release/Markdown2Pdf.${{ env.Nuget_Version }}.nupkg -k ${{ secrets.NUGET_API_KEY }} -s https://api.nuget.org/v3/index.json  --skip-duplicate

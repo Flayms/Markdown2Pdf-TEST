@@ -11,8 +11,7 @@ jobs:
     name: test-job
     runs-on: ubuntu-latest
     
-    permissions:
-      contents: write-all
+    permissions: write-all
 
     steps:
     # Checks out the source code at the latest commit

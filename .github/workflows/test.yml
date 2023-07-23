@@ -22,7 +22,7 @@ jobs:
       
     - name: Confirm Test
       shell: bash
-      run: echo "Another Test= ${{ env.MyTestVar }}", ${{ env.MyTestVar2 }}"
+      run: echo "Another Test= ${{ env.MyTestVar }}, ${{ env.MyTestVar2 }}"
     
     # Installs the .NET SDK on the build machine
     - name: Setup .NET

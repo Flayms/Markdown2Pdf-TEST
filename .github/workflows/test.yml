@@ -17,6 +17,13 @@ jobs:
     # Checks out the source code at the latest commit
     - uses: actions/checkout@v3
     
+    - name: Test Step
+      run: bash ".github/workflows/test.sh"
+      
+    - name: Confirm Test
+      shell: bash
+      run: echo "Another Test= ${{ env.MyTestVar }}, ${{ env.MyTestVar2 }}"
+    
     # Installs the .NET SDK on the build machine
     - name: Setup .NET
       uses: actions/setup-dotnet@v3

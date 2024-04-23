@@ -1,6 +1,4 @@
-# This workflow tests, builds and releases the project on github and nuget.org
-
-name: build-and-release
+name: update-wiki
 on:
     push:
         branches:
@@ -19,17 +17,45 @@ jobs:
       contents: write
 
     steps:
+
     # Checks out the source code at the latest commit
-    - uses: actions/checkout@v3
+    - name: checkout source
+      uses: actions/checkout@v4
       with:
         fetch-depth: 0
-    
+        path: ${{github.repository}}
+
+    - name: checkout wiki
+      uses: actions/checkout@v3
+      with:
+        repository: ${{github.repository}}.wiki
+        path: ${{github.repository}}.wiki
+
     # Installs the .NET SDK on the build machine
     - name: Setup .NET
       uses: actions/setup-dotnet@v3
       with:
         dotnet-version: ${{ env.DOTNET_VERSION }}
 
+    # Generate the Wiki with docfx from the XML documentation comments
     - name: Create Wiki
       shell: pwsh
-      run: ".github/workflows/build_wiki.ps1"
+      run: |
+        ls
+        Push-Location Markdown2Pdf
+        ".github/workflows/build_wiki.ps1"
+        Pop-Location
+
+    - name: Commit files
+      run: |
+        ls
+        cd Markdown2Pdf.wiki
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        git add .
+        git commit -m "Add changes"
+    - name: Push changes to wiki repo
+      uses: ad-m/github-push-action@master
+      with:
+        repository: ${{github.repository}}.wiki    # specify the wiki repo and push the update.
+        github_token: ${{ secrets.GITHUB_TOKEN }}

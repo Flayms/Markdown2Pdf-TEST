@@ -45,6 +45,8 @@ jobs:
         Push-Location ${{github.repository}}
         pwsh ".github/workflows/build_wiki.ps1"
         Pop-Location
+        cd Flayms
+        ls
 
     - name: Commit files
       run: |

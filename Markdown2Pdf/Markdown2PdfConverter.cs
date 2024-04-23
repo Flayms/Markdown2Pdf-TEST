@@ -1,85 +1,112 @@
-﻿using Markdig;
+﻿using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Threading.Tasks;
+using System.Xml.Linq;
+using System.Xml.XPath;
+using Markdig;
+using Markdig.Extensions.AutoIdentifiers;
+using Markdown2Pdf.Options;
+using Markdown2Pdf.Services;
 using PuppeteerSharp;
 using PuppeteerSharp.Media;
-using System;
-using System.Reflection;
-using System.Linq;
-using Markdown2Pdf.Options;
-using System.Collections.Generic;
 
 namespace Markdown2Pdf;
 
 /// <summary>
 /// Use this to parse markdown to PDF.
 /// </summary>
-public class Markdown2PdfConverter {
+public class Markdown2PdfConverter : IConvertionEvents {
 
   /// <summary>
   /// All the options this converter uses for generating the PDF.
   /// </summary>
   public Markdown2PdfOptions Options { get; }
 
-  //todo: one instead of 2 dics
-  //todo: better way to keep versions in sync
-  //todo: implement
-  private readonly IReadOnlyDictionary<string, string> _packageLocationsWeb = new Dictionary<string, string>() {
-    {"mathjaxPath",  "https://cdn.jsdelivr.net/npm/mathjax@3" },
-    {"mermaidPath",  "https://cdn.jsdelivr.net/npm/mermaid@10.2.3" }
-  };
+  /// <summary>
+  /// The template used for generating the html which then gets converted into PDF.
+  /// </summary>
+  public string ContentTemplate { get; set; }
 
-  //the first half of the path gets added in the constructor, depending on the user-settings
-  private readonly IReadOnlyDictionary<string, string> _packageLocationsLocal = new Dictionary<string, string>() {
-    {"mathjaxPath",  "mathjax" },
-    {"mermaidPath",  "mermaid" }
-  };
+  /// <summary>
+  /// Pdf file name without extension.
+  /// </summary>
+  public string? OutputFileName { get; private set; }
+
+  private readonly EmbeddedResourceService _embeddedResourceService = new();
+
+  private const string _CUSTOM_HEAD_KEY = "customHeadContent";
+  private const string _BODY_KEY = "body";
+  private const string _CODE_HIGHLIGHT_THEME_NAME_KEY = "highlightjs_theme_name";
+  private const string _DISABLE_AUTO_LANGUAGE_DETECTION_KEY = "disableAutoLanguageDetection";
+  private const string _DISABLE_AUTO_LANGUAGE_DETECTION_VALUE = "hljs.configure({ languages: [] });";
+
+  private const string _DOCUMENT_TITLE_CLASS = "document-title";
+  private const string _TEMPLATE_WITH_SCRIPTS_FILE_NAME = "ContentTemplate.html";
+  private const string _TEMPLATE_NO_SCRIPTS_FILE_NAME = "ContentTemplate_NoScripts.html";
+  private const string _HEADER_FOOTER_STYLES_FILE_NAME = "Header-Footer-Styles.html";
 
   /// <summary>
   /// Instantiate a new <see cref="Markdown2PdfConverter"/>.
   /// </summary>
   /// <param name="options">Optional options to specify how to convert the markdown.</param>
-  public Markdown2PdfConverter(Markdown2PdfOptions? options = default) {
+  public Markdown2PdfConverter(Markdown2PdfOptions? options = null) {
     this.Options = options ?? new Markdown2PdfOptions();
-
     var moduleOptions = this.Options.ModuleOptions;
 
-    //adjust local dictionary paths
-    if (moduleOptions.ModuleLocation != ModuleLocation.Remote) {
-      var path = moduleOptions.ModulePath!;
+    var templateName = this.Options.ModuleOptions == ModuleOptions.None
+      ? _TEMPLATE_NO_SCRIPTS_FILE_NAME
+      : _TEMPLATE_WITH_SCRIPTS_FILE_NAME;
+    this.ContentTemplate = this._embeddedResourceService.GetResourceContent(templateName);
 
-      var updatedDic = new Dictionary<string, string>();
+    // Services can be discarded because they stay alive through event attaching.
+    if (this.Options.TableOfContents != null)
+      _ = new TableOfContentsCreator(this.Options.TableOfContents, this, this._embeddedResourceService);
 
-      foreach (var kvp in this._packageLocationsLocal) {
-        var key = kvp.Key;
-        var value = Path.Combine(path, kvp.Value);
-        updatedDic[key] = value;
-      }
+    _ = new ThemeService(this.Options.Theme, moduleOptions, this);
+    _ = new ModuleService(this.Options.ModuleOptions, this);
+    _ = new MetadataService(this.Options, this);
+  }
 
-      this._packageLocationsLocal = updatedDic;
-    }
+  private event EventHandler<MarkdownArgs>? _beforeMarkdownConversion;
+  event EventHandler<MarkdownArgs> IConvertionEvents.BeforeMarkdownConversion {
+    add => _beforeMarkdownConversion += value;
+    remove => _beforeMarkdownConversion -= value;
+  }
+
+  private event EventHandler<TemplateModelArgs>? _onTemplateModelCreating;
+  event EventHandler<TemplateModelArgs>? IConvertionEvents.OnTemplateModelCreating {
+    add => _onTemplateModelCreating += value;
+    remove => _onTemplateModelCreating -= value;
+  }
+
+  private event EventHandler<PdfArgs>? _onPdfCreatedEvent;
+  event EventHandler<PdfArgs>? IConvertionEvents.OnPdfCreatedEvent {
+    add => _onPdfCreatedEvent += value;
+    remove => _onPdfCreatedEvent -= value;
   }
 
   /// <inheritdoc cref="Convert(FileInfo, FileInfo)"/>
   /// <remarks>The PDF will be saved in the same location as the markdown file with the naming convention "markdownFileName.pdf".</remarks>
   /// <returns>The newly created PDF-file.</returns>
-  public FileInfo Convert(FileInfo markdownFile) => new FileInfo(this.Convert(markdownFile.FullName));
+  public async Task<FileInfo> Convert(FileInfo markdownFile) => new(await this.Convert(markdownFile.FullName));
 
   /// <summary>
   /// Converts the given markdown-file to PDF.
   /// </summary>
   /// <param name="markdownFile"><see cref="FileInfo"/> containing the markdown.</param>
   /// <param name="outputFile"><see cref="FileInfo"/> for saving the generated PDF.</param>
-  public void Convert(FileInfo markdownFile, FileInfo outputFile) => this.Convert(markdownFile.FullName, outputFile.FullName);
+  public async Task Convert(FileInfo markdownFile, FileInfo outputFile) => await this.Convert(markdownFile.FullName, outputFile.FullName);
 
   /// <inheritdoc cref="Convert(string, string)"/>
   /// <remarks>The PDF will be saved in the same location as the markdown file with the naming convention "markdownFileName.pdf".</remarks>
   /// <returns>Filepath to the generated pdf.</returns>
-  public string Convert(string markdownFilePath) {
-    var markdownDir = Path.GetDirectoryName(markdownFilePath);
+  public async Task<string> Convert(string markdownFilePath) {
+    var markdownDir = Path.GetDirectoryName(Path.GetFullPath(markdownFilePath));
     var outputFileName = Path.GetFileNameWithoutExtension(markdownFilePath) + ".pdf";
     var outputFilePath = Path.Combine(markdownDir, outputFileName);
-    this.Convert(markdownFilePath, outputFilePath);
+    await this.Convert(markdownFilePath, outputFilePath);
 
     return outputFilePath;
   }
@@ -89,129 +116,220 @@ public class Markdown2PdfConverter {
   /// </summary>
   /// <param name="markdownFilePath">Path to the markdown file.</param>
   /// <param name="outputFilePath">File path for saving the PDF to.</param>
-  /// <remarks>The PDF will be saved in the same location as the markdown file with the naming convention "markdownFileName.pdf".</remarks>
-  public void Convert(string markdownFilePath, string outputFilePath) {
+  /// <remarks>The PDF will be saved at the path specified in <paramref name="outputFilePath"/>.</remarks>
+  public async Task<string> Convert(string markdownFilePath, string outputFilePath) {
     markdownFilePath = Path.GetFullPath(markdownFilePath);
     outputFilePath = Path.GetFullPath(outputFilePath);
+    Directory.CreateDirectory(Path.GetDirectoryName(outputFilePath));
 
     var markdownContent = File.ReadAllText(markdownFilePath);
 
-    var html = this._GenerateHtml(markdownContent);
+    await this._Convert(outputFilePath, markdownContent, markdownFilePath);
 
-    //todo: make temp-file
+    return outputFilePath;
+  }
+
+  /// <summary>
+  /// Converts the given enumerable of markdown-files to PDF.
+  /// </summary>
+  /// <param name="markdownFilePaths">Enumerable with paths to the markdown files.</param>
+  /// <remarks>The PDF will be saved in the same location of the first markdown file with the naming convention "markdownFileName.pdf".</remarks>
+  public async Task<string> Convert(IEnumerable<string> markdownFilePaths) {
+    var first = markdownFilePaths.First();
+    var markdownDir = Path.GetDirectoryName(first);
+    var outputFileName = Path.GetFileNameWithoutExtension(first) + ".pdf";
+    var outputFilePath = Path.Combine(markdownDir, outputFileName);
+    await this.Convert(markdownFilePaths, outputFilePath);
+
+    return outputFilePath;
+  }
+
+  /// <summary>
+  /// Converts the given enumerable of markdown-files to PDF.
+  /// </summary>
+  /// <param name="markdownFilePaths">Enumerable with paths to the markdown files.</param>
+  /// <param name="outputFilePath">File path for saving the PDF to.</param>
+  public async Task<string> Convert(IEnumerable<string> markdownFilePaths, string outputFilePath) {
+    var markdownContent = string.Join(Environment.NewLine, markdownFilePaths.Select(File.ReadAllText));
+
+    var markdownFilePath = Path.GetFullPath(markdownFilePaths.First());
+    outputFilePath = Path.GetFullPath(outputFilePath);
+    Directory.CreateDirectory(Path.GetDirectoryName(outputFilePath));
+
+    await this._Convert(outputFilePath, markdownContent, markdownFilePath);
+
+    return outputFilePath;
+  }
+
+  /// <summary>
+  /// Converts the given list of markdown-files to PDF.
+  /// </summary>
+  /// <param name="outputFilePath">File path for saving the PDF to.</param>
+  /// <param name="markdownContent">String holding all markdown data.</param>
+  /// <param name="markdownFilePath">Path to the first markdown file.</param>
+  private async Task _Convert(string outputFilePath, string markdownContent, string markdownFilePath) {
+    // Rerun logic
+    await this._ConvertInternal(outputFilePath, markdownContent, markdownFilePath);
+    var args = new PdfArgs(outputFilePath);
+    this._onPdfCreatedEvent?.Invoke(this, args);
+
+    if (args.NeedsRerun)
+      await this._ConvertInternal(outputFilePath, markdownContent, markdownFilePath);
+  }
+
+  private async Task _ConvertInternal(string outputFilePath, string markdownContent, string markdownFilePath) {
+    this.OutputFileName = Path.GetFileNameWithoutExtension(outputFilePath);
+
+    // generate html
+    var html = this.GenerateHtml(markdownContent);
+
     var markdownDir = Path.GetDirectoryName(markdownFilePath);
-    var htmlPath = Path.Combine(markdownDir, "converted.html");
+    var htmlFileName = Path.GetFileNameWithoutExtension(markdownFilePath) + ".html";
+    var htmlPath = Path.Combine(markdownDir, htmlFileName);
     File.WriteAllText(htmlPath, html);
 
-    var task = this._GeneratePdfAsync(htmlPath, outputFilePath, Path.GetFileNameWithoutExtension(markdownFilePath));
-    task.Wait();
+    // generate pdf
+    await this._GeneratePdfAsync(htmlPath, outputFilePath);
 
     if (!this.Options.KeepHtml)
       File.Delete(htmlPath);
   }
 
-  private string _GenerateHtml(string markdownContent) {
-    //todo: decide on how to handle pipeline better
-    var pipeline = new MarkdownPipelineBuilder()
+  internal string GenerateHtml(string markdownContent) {
+    var markdownArgs = new MarkdownArgs(ref markdownContent);
+    this._beforeMarkdownConversion?.Invoke(this, markdownArgs);
+    markdownContent = markdownArgs.MarkdownContent;
+
+    var pipelineBuilder = new MarkdownPipelineBuilder()
       .UseAdvancedExtensions()
-      .UseDiagrams()
-      .Build();
-    //.UseSyntaxHighlighting();
+      .UseEmojiAndSmiley();
+
+    // Switch to AutoLink Option to allow non-ASCII characters
+    pipelineBuilder.Extensions.Remove(pipelineBuilder.Extensions.Find<AutoIdentifierExtension>()!);
+    pipelineBuilder.UseAutoIdentifiers(AutoIdentifierOptions.AutoLink);
+
+    var pipeline = pipelineBuilder.Build();
+
     var htmlContent = Markdown.ToHtml(markdownContent, pipeline);
 
-    //todo: support more plugins
-    //todo: code-color markup
+    var templateModel = this._CreateTemplateModel(htmlContent);
 
-    var assembly = Assembly.GetAssembly(typeof(Markdown2PdfConverter));
-    var currentLocation = Path.GetDirectoryName(assembly.Location);
-    var templateHtmlResource = assembly.GetManifestResourceNames().Single(n => n.EndsWith("ContentTemplate.html"));
-
-    string templateHtml;
-
-    using (Stream stream = assembly.GetManifestResourceStream(templateHtmlResource))
-    using (StreamReader reader = new StreamReader(stream)) {
-      templateHtml = reader.ReadToEnd();
-    }
-
-    //create model for templating html
-    var templateModel = new Dictionary<string, string>();
-
-    //load correct module paths
-    if (this.Options.ModuleOptions.ModuleLocation == ModuleLocation.Remote) {
-      foreach (var kvp in this._packageLocationsWeb)
-        templateModel.Add(kvp.Key, kvp.Value);
-    }
-    else {
-      foreach (var kvp in this._packageLocationsLocal)
-        templateModel.Add(kvp.Key, kvp.Value);
-    }
-
-    templateModel.Add("body", htmlContent);
-
-    return TemplateFiller.FillTemplate(templateHtml, templateModel);
+    return TemplateFiller.FillTemplate(this.ContentTemplate, templateModel);
   }
 
-  private async Task _GeneratePdfAsync(string htmlFilePath, string outputFilePath, string title) {
+  private Dictionary<string, string> _CreateTemplateModel(string htmlContent) {
+    var templateModel = new Dictionary<string, string>();
+
+    var languageDetectionValue = this.Options.EnableAutoLanguageDetection
+      ? string.Empty
+      : _DISABLE_AUTO_LANGUAGE_DETECTION_VALUE;
+    templateModel.Add(_DISABLE_AUTO_LANGUAGE_DETECTION_KEY, languageDetectionValue);
+    templateModel.Add(_CODE_HIGHLIGHT_THEME_NAME_KEY, this.Options.CodeHighlightTheme.ToString());
+    templateModel.Add(_CUSTOM_HEAD_KEY, this.Options.CustomHeadContent ?? string.Empty);
+    templateModel.Add(_BODY_KEY, htmlContent);
+
+    this._onTemplateModelCreating?.Invoke(this, new TemplateModelArgs(templateModel));
+
+    return templateModel;
+  }
+
+  private async Task _GeneratePdfAsync(string htmlFilePath, string outputFilePath) {
     using var browser = await this._CreateBrowserAsync();
     var page = await browser.NewPageAsync();
+    var options = this.Options;
+    var margins = options.MarginOptions;
 
-    await page.GoToAsync(htmlFilePath, WaitUntilNavigation.Networkidle2);
+    _ = await page.GoToAsync("file:///" + htmlFilePath, WaitUntilNavigation.Networkidle2);
 
-    var marginOptions = new PuppeteerSharp.Media.MarginOptions();
-    if (this.Options.MarginOptions != null) {
-      //todo: remove double initialization
-      marginOptions = new PuppeteerSharp.Media.MarginOptions {
-        Top = this.Options.MarginOptions.Top,
-        Bottom = this.Options.MarginOptions.Bottom,
-        Left = this.Options.MarginOptions.Left,
-        Right = this.Options.MarginOptions.Right,
-      };
-    }
+    var puppeteerMargins = margins != null
+      ? new PuppeteerSharp.Media.MarginOptions {
+        Top = margins.Top,
+        Bottom = margins.Bottom,
+        Left = margins.Left,
+        Right = margins.Right,
+      }
+      : new PuppeteerSharp.Media.MarginOptions();
 
     var pdfOptions = new PdfOptions {
-      //todo: make this settable
-      Format = PaperFormat.A4,
-      PrintBackground = true,
-      MarginOptions = marginOptions
+      Format = options.Format,
+      Landscape = options.IsLandscape,
+      PrintBackground = true, // TODO: background doesnt work for margins
+      MarginOptions = puppeteerMargins,
+      Scale = options.Scale
     };
 
-    //todo: error handling
-    //todo: default header is super small
-    if (this.Options.HeaderUrl != null) {
-      var headerContent = File.ReadAllText(this.Options.HeaderUrl);
+    var hasHeaderFooterStylesAdded = false;
 
-      //todo: super hacky, rather replace class content
-      //todo: create setting and only use fileName as fallback
-      headerContent = headerContent.Replace("title", title);
-      pdfOptions.HeaderTemplate = headerContent;
+    // TODO: default header is super small
+    if (options.HeaderHtml != null) {
       pdfOptions.DisplayHeaderFooter = true;
+      var html = this._FillHeaderFooterDocumentTitleClass(options.HeaderHtml);
+      pdfOptions.HeaderTemplate = this._AddHeaderFooterStylesToHtml(html);
+      hasHeaderFooterStylesAdded = true;
     }
 
-    if (this.Options.FooterUrl != null) {
-      var footerContent = File.ReadAllText(this.Options.FooterUrl);
-      footerContent = footerContent.Replace("title", title);
-      pdfOptions.FooterTemplate = footerContent;
+    if (options.FooterHtml != null) {
       pdfOptions.DisplayHeaderFooter = true;
+      var html = this._FillHeaderFooterDocumentTitleClass(options.FooterHtml);
+      pdfOptions.FooterTemplate = !hasHeaderFooterStylesAdded ? this._AddHeaderFooterStylesToHtml(html) : html;
     }
 
     await page.EmulateMediaTypeAsync(MediaType.Screen);
     await page.PdfAsync(outputFilePath, pdfOptions);
   }
 
+  /// <summary>
+  /// Applies extra styles to the given header / footer html because the default ones don't look good on the pdf.
+  /// </summary>
+  /// <param name="html">The header / footer html to add the styles to.</param>
+  /// <returns>The html with added styles.</returns>
+  private string _AddHeaderFooterStylesToHtml(string html)
+    => this._embeddedResourceService.GetResourceContent(_HEADER_FOOTER_STYLES_FILE_NAME) + html;
+
+  /// <summary>
+  /// Inserts the document title into all elements containing the document-title class.
+  /// </summary>
+  /// <param name="html">Template html.</param>
+  /// <returns>The html with inserted document-title.</returns>
+  private string _FillHeaderFooterDocumentTitleClass(string html) {
+    if (this.Options.DocumentTitle == null)
+      return html;
+
+    // need to wrap bc html could have multiple roots
+    var htmlWrapped = $"<root>{html}</root>";
+    var xDocument = XDocument.Parse(htmlWrapped);
+    var titleElements = xDocument.XPathSelectElements($"//*[contains(@class, '{_DOCUMENT_TITLE_CLASS}')]");
+
+    foreach (var titleElement in titleElements)
+      titleElement.Value = this.Options.DocumentTitle;
+
+    var resultHtml = xDocument.ToString();
+
+    // remove helper wrap
+    var lines = resultHtml.Split(new string[] { "\r\n", "\r", "\n" }, StringSplitOptions.None);
+    resultHtml = string.Join(Environment.NewLine, lines.Take(lines.Length - 1).Skip(1));
+
+    return resultHtml;
+  }
+
   private async Task<IBrowser> _CreateBrowserAsync() {
     var launchOptions = new LaunchOptions {
       Headless = true,
-      Args = new[] {
-        "--no-sandbox" //todo: check why this is needed
-      },
+      Args = ["--no-sandbox"], // needed for running inside docker
     };
 
-    if (this.Options.ChromePath == null) {
-      using var browserFetcher = new BrowserFetcher();
-      Console.WriteLine("Downloading chromium...");
-      await browserFetcher.DownloadAsync(BrowserFetcher.DefaultChromiumRevision);
-    } else
+    if (this.Options.ChromePath != null) {
       launchOptions.ExecutablePath = this.Options.ChromePath;
+      return await Puppeteer.LaunchAsync(launchOptions);
+    }
+
+    using var browserFetcher = new BrowserFetcher();
+    var installed = browserFetcher.GetInstalledBrowsers();
+
+    if (!installed.Any()) {
+      Console.WriteLine("Path to chrome was not specified. Downloading chrome...");
+      _ = await browserFetcher.DownloadAsync();
+    }
 
     return await Puppeteer.LaunchAsync(launchOptions);
   }

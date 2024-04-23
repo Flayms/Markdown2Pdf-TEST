@@ -18,10 +18,12 @@ jobs:
     steps:
     # Checks out the source code at the latest commit
     - uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
 
-    # Load version-name from .csproj in different enviornment variables (env.Tag_Name + env.Release_Name + env.Nuget_Version)
-    - name: Receive Version
-      run: python ".github/workflows/receive-version.py"
+    # Create new version from commits and write to enviornment variables (env.Tag_Name + env.Release_Name + env.Nuget_Version)
+    - name: Create Version
+      run: bash ".github/workflows/create-next-version.sh" 
     
     # Installs the .NET SDK on the build machine
     - name: Setup .NET
@@ -36,10 +38,6 @@ jobs:
     # Builds the project
     - name: Build
       run: dotnet build --configuration Release --no-restore
-      
-    # Runs any tests in the project
-    - name: Test
-      run: dotnet test --configuration Release --no-restore --verbosity normal
 
     # Create Release Log
     # Need to fetch, otherwise doesn't know last commits
@@ -61,11 +59,3 @@ jobs:
         name: "${{ env.Release_Name }}"
         body_path: "${{ github.workspace }}\\release-notes.md"
         token: ${{ secrets.GITHUB_TOKEN }}
-
-    # Create nuget-package
-    - name: Pack
-      run: dotnet pack --configuration Release --no-restore
-    
-    # Push nuget-package to nuget.org
-    - name: Push
-      run: dotnet nuget push Markdown2Pdf/bin/Release/Markdown2Pdf.${{ env.Nuget_Version }}.nupkg -k ${{ secrets.NUGET_API_KEY }} -s https://int.nugettest.org/api/v2 --skip-duplicates

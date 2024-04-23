@@ -2,15 +2,11 @@
 
 This is a demo of all the Markdown2Pdf features.
 
-## Table of Contents <!-- omit from toc -->
-
-[TOC]
-
 ## Common Markdown Functionality
 
 # h1 Heading
 ## h2 Heading
-### h3 Heading
+### h3 Heading <!-- omit from toc -->
 #### h4 Heading
 ##### h5 Heading
 ###### h6 Heading
@@ -26,6 +22,8 @@ This is a demo of all the Markdown2Pdf features.
     * my
     * unordered
         * List
+
+### Первый заголовок
 
 ### Ordered Lists
 
@@ -74,7 +72,7 @@ This has a [Link](https://github.com/Flayms/Markdown2Pdf).
 
 ```cs
 public void Main(string[] args) {
-    Console.WriteLine("Hello World!");
+    Console.WriteLine("Example Code!");
 }
 ```
 
@@ -82,7 +80,7 @@ public void Main(string[] args) {
 
 | Value | Type |
 | --- | --- |
-| "Hello World" | string |
+| "Example Code" | string |
 | 7 | integer |
 | true | boolean |
 
@@ -127,7 +125,11 @@ Latex $\color{green}Color \color{blue}\text{ works}$
 graph TD
 A[Christmas] -->|Get money| B(Go shopping)
 B --> C{Let me think}
-C -->|One| D["fa:fa-laptop Laptop&nbsp;"]
-C -->|Two| E["fa:fa-mobile iPhone"]
-C -->|Three| F["fa:fa-car Car&nbsp;"]
+C -->|One| D[Laptop]
+C -->|Two| E[iPhone]
+C -->|Three| F[Car]
 ```
+
+## <img src="md2pdf.png" alt="Logo" Width=64px/> ._-This - is a &@! heading __ with . and ! -
+
+[TOC]

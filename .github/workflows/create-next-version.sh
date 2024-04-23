@@ -1,6 +1,6 @@
 #!/bin/bash
 
-FILE_NAME=$1
+TEMP_FILE_NAME="tmp.txt"
 LAST_TAG=$(git ls-remote --tags --sort=committerdate | grep -o 'v.*' | sort -r | head -1)
 
 MAJOR_INDEX=0
@@ -11,10 +11,10 @@ INDEX_TO_INCREASE=$PATCH_INDEX
 echo "Last Tag: $LAST_TAG"
 
 # Create file
-git log $LAST_TAG..HEAD --no-merges --oneline > $FILE_NAME
+git log $LAST_TAG..HEAD --no-merges --oneline > $TEMP_FILE_NAME
 
-echo "Created file '$FILE_NAME' with following content:"
-echo "$($FILE_NAME)"
+echo "Created file '$TEMP_FILE_NAME' with following content:"
+echo "$($TEMP_FILE_NAME)"
 echo "----"
 
 # loop over each commit to determine new version
@@ -34,28 +34,24 @@ do
   
   MSG_HEADER=`echo "${COMMIT_MSG}" | head -1`
 
-  # todo: check if this really works
   # header containing '!' after the type/scope
-  if [[ "$MSG_HEADER" =~ ^(\w.)+(\(.*\))?!: ]]; then
+if echo $MSG_HEADER | grep -E "^(\w.)+(\(.*\))?!:"; then
     INDEX_TO_INCREASE=$MAJOR_INDEX
     break
+  else
+    echo "doesnt match!"
   fi
 
   # todo: check if this really works
   # determine minor changes
-  # header like 'feat[optional scope]:'
-  if [[ "$MSG_HEADER" =~ ^(feat)+(\(.*\))?!?: ]]; then
+  # header like 'feat(optional scope):'
+  if echo $MSG_HEADER | grep -E "^(feat)+(\(.*\))?:"; then
     INDEX_TO_INCREASE=$MINOR_INDEX
   fi
 
-  # don't need to increase patch because we always increase patch by default
+  # don't need to look for patch because it always get's increased if nothing else found
 
-done < $FILE_NAME
-
-#----DEBUG----
-#LAST_TAG="v3.4.5"
-#INDEX_TO_INCREASE=0
-#-------------
+done < $TEMP_FILE_NAME
 
 # remove v letter
 LAST_TAG_TRIMMED="${LAST_TAG:1}"
@@ -66,7 +62,7 @@ PATCH=$(echo $LAST_TAG_TRIMMED | awk -F \. {'print $3'})
 # increase major
 if [[ $INDEX_TO_INCREASE = $MAJOR_INDEX ]]; then
   echo "increasing major"
-  let MAJOR=MAJOR+1
+  let "MAJOR=MAJOR+1"
   MINOR=0
   PATCH=0
 fi

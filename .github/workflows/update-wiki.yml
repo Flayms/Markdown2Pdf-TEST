@@ -1,0 +1,35 @@
+# This workflow tests, builds and releases the project on github and nuget.org
+
+name: build-and-release
+on:
+    push:
+        branches:
+            - main
+env:
+  # Specifies dotnet SDK Version
+  DOTNET_VERSION: '8.0.x'
+
+jobs:
+  ci:
+    name: build-and-release-job
+    runs-on: ubuntu-latest
+
+    # Need write permission for creating release-notes file
+    permissions:
+      contents: write
+
+    steps:
+    # Checks out the source code at the latest commit
+    - uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
+    
+    # Installs the .NET SDK on the build machine
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v3
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+
+    - name: Create Wiki
+      shell: pwsh
+      run: ".github/workflows/build_wiki.ps1"

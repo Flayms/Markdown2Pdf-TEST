@@ -4,25 +4,16 @@ name: test
 on: push
 env:
   # Specifies dotnet SDK Version
-  DOTNET_VERSION: '6.0.x'
+  DOTNET_VERSION: '8.0.x'
 
 jobs:
   ci:
     name: test-job
     runs-on: ubuntu-latest
-    
-    permissions: write-all
 
     steps:
     # Checks out the source code at the latest commit
     - uses: actions/checkout@v3
-    
-    - name: Test Step
-      run: bash ".github/workflows/test.sh"
-      
-    - name: Confirm Test
-      shell: bash
-      run: echo "Another Test= ${{ env.MyTestVar }}, ${{ env.MyTestVar2 }}"
     
     # Installs the .NET SDK on the build machine
     - name: Setup .NET
@@ -40,4 +31,8 @@ jobs:
       
     # Runs any tests in the project
     - name: Test
-      run: dotnet test --configuration Release --no-restore --verbosity normal
+      run: |
+        mkdir -p Markdown2Pdf.Tests/bin/Release/net8.0/ 
+        cp Markdown2Pdf/package.json Markdown2Pdf.Tests/bin/Release/net8.0
+        (cd Markdown2Pdf.Tests/bin/Release/net8.0; npm install)
+        dotnet test --configuration Release --no-restore --verbosity normal

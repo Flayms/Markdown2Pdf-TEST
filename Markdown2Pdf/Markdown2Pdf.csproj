@@ -4,7 +4,7 @@
 		<TargetFramework>netstandard2.0</TargetFramework>
 		<LangVersion>default</LangVersion>
 		<Nullable>enable</Nullable>
-		<Version>0.3.2</Version>
+		<Version>1.0.0</Version>
 		<Description>Library for converting Markdown to PDF.</Description>
 		<PackageProjectUrl>https://github.com/Flayms/Markdown2Pdf</PackageProjectUrl>
 		<PackageReadmeFile>README.md</PackageReadmeFile>
@@ -16,18 +16,42 @@
 
 	<PropertyGroup>
 		<GenerateDocumentationFile>true</GenerateDocumentationFile>
+		<PackageIcon>md2pdf.png</PackageIcon>
+		<RepositoryUrl>https://github.com/Flayms/Markdown2Pdf</RepositoryUrl>
 	</PropertyGroup>
 
 	<ItemGroup>
-	  <EmbeddedResource Include="wwwroot\ContentTemplate.html">
+		<InternalsVisibleTo Include="Markdown2Pdf.Tests" />
+	</ItemGroup>
+
+	<ItemGroup>
+	  <None Remove="templates\ContentTemplate_NoScripts.html" />
+	  <None Remove="templates\Header-Footer-Styles.html" />
+	  <None Remove="templates\TableOfContentsDecimalStyle.css" />
+	  <None Remove="templates\TableOfContentsPageNumberStyle.css" />
+	</ItemGroup>
+
+	<ItemGroup>
+	  <EmbeddedResource Include="templates\ContentTemplate_NoScripts.html" />
+	</ItemGroup>
+
+	<ItemGroup>
+	  <EmbeddedResource Include="templates\ContentTemplate.html">
 	    <CopyToOutputDirectory>Never</CopyToOutputDirectory>
 	  </EmbeddedResource>
+	  <EmbeddedResource Include="templates\Header-Footer-Styles.html" />
+	  <EmbeddedResource Include="templates\TableOfContentsDecimalStyle.css" />
+	  <EmbeddedResource Include="templates\TableOfContentsPageNumberStyle.css" />
 	</ItemGroup>
 
 	<ItemGroup>
 		<None Include="..\LICENSE">
 			<Pack>True</Pack>
 			<PackagePath>\</PackagePath>
+		</None>
+		<None Include="..\assets\md2pdf.png">
+		  <Pack>True</Pack>
+		  <PackagePath>\</PackagePath>
 		</None>
 		<None Include="..\README.md">
 			<Pack>True</Pack>
@@ -36,8 +60,9 @@
 	</ItemGroup>
 
 	<ItemGroup>
-		<PackageReference Include="Markdig" Version="0.31.0" />
-		<PackageReference Include="PuppeteerSharp" Version="10.1.0" />
+		<PackageReference Include="Markdig" Version="0.36.2" />
+		<PackageReference Include="PdfPig" Version="0.1.8" />
+		<PackageReference Include="PuppeteerSharp" Version="16.0.0" />
 	</ItemGroup>
 
 </Project>

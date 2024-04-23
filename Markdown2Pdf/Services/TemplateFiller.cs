@@ -1,17 +1,16 @@
 ﻿using System.Collections.Generic;
 using System.Text.RegularExpressions;
 
-namespace Markdown2Pdf;
+namespace Markdown2Pdf.Services;
 
-//todo: refac
 internal class TemplateFiller {
 
-  //matches groups like @(myToken)
-  private static readonly Regex _TOKEN_REGEX = new (@"(?<token>@\(.*\))",
-    RegexOptions.Compiled |RegexOptions.IgnoreCase | RegexOptions.ExplicitCapture);
+  // matches groups like @(myToken)
+  private static readonly Regex _tokenRegex = new(@"(?<token>@\(.*?\))",
+    RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.ExplicitCapture);
 
   public static string FillTemplate(string template, Dictionary<string, string> model) {
-    var matches =  _TOKEN_REGEX.Matches(template);
+    var matches = _tokenRegex.Matches(template);
 
     var filled = template;
 
@@ -19,8 +18,8 @@ internal class TemplateFiller {
       var token = match.Groups["token"].Value;
       var keyName = token.Replace("@", string.Empty).Replace("(", string.Empty).Replace(")", string.Empty);
 
-      //todo: better exception in fail case
-      var value = model[keyName];
+      if (!model.TryGetValue(keyName, out var value))
+        value = string.Empty;
 
       filled = filled.Replace(token, value);
     }

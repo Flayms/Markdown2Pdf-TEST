@@ -6,6 +6,7 @@
           "files": [
             "**/Markdown2Pdf/Markdown2Pdf.csproj"
           ],
+          "exclude": [ "**/bin/**", "**/obj/**" ],
           "src": "../"
         }
       ],
@@ -17,7 +18,6 @@
     "content": [
       {
         "files": [
-          "**/*.{md,yml}"
         ],
         "exclude": [
           "_site/**",

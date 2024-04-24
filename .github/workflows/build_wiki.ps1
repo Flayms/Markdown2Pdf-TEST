@@ -41,7 +41,7 @@ function CleanMarkdown($markdownContent) {
     return $cleanedContent
 }
 
-# dotnet tool update -g docfx # TODO: install in pipeline instead
+dotnet tool update -g docfx # TODO: install in pipeline instead
 docfx metadata docfx.json
 
 $markdownFiles = Get-ChildItem -Path "../Markdown2Pdf.wiki" -Filter "*.md" -Recurse -File

@@ -28,7 +28,7 @@ jobs:
       uses: actions/checkout@v3
       with:
         repository: ${{github.repository}}.wiki
-        path: ${{github.repository}}.wiki
+        path: Flayms/Markdown2Pdf.wiki
 
     # Installs the .NET SDK on the build machine
     - name: Setup .NET
@@ -46,7 +46,7 @@ jobs:
 
     - name: Commit and push changes
       run: |
-        cd ${{github.repository}}.wiki
+        cd Flayms/Markdown2Pdf.wiki
         git config --local user.email "action@github.com"
         git config --local user.name "GitHub Action"
         git add .
